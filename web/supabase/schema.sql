@@ -7,9 +7,13 @@ create table if not exists public.rooms (
   player_black text,
   player_white text,
   current_turn smallint not null default 1,
-  status text not null default 'waiting' check (status in ('waiting', 'playing', 'finished')),
+  status text not null default 'waiting' check (status in ('waiting', 'ready', 'playing', 'finished')),
   winner smallint not null default 0,
+  last_winner smallint not null default 0,
   board jsonb not null,
+  mode text not null default 'online',
+  host_ready boolean not null default false,
+  guest_ready boolean not null default false,
   updated_at timestamptz not null default now()
 );
 
@@ -28,5 +32,5 @@ create policy "rooms_insert" on public.rooms
 create policy "rooms_update" on public.rooms
   for update using (true);
 
--- Realtime 사용을 위해 Table Editor > rooms > Realtime 를 켜거나
--- Database > Replication 에서 rooms 테이블을 publication에 추가하세요.
+-- Realtime 활성화 (4단계: SQL Editor에서 이 줄도 실행)
+alter publication supabase_realtime add table public.rooms;

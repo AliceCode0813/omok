@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import OmokBoard from "@/components/OmokBoard";
 import {
+  bothPlayersReady,
   canPlaceStone,
   checkWin,
   createEmptyBoard,
@@ -12,6 +13,7 @@ import {
   type Board,
   type Room,
 } from "@/lib/game";
+import { nextOnlineColors, randomBlackPlayer } from "@/lib/modes";
 import { getPlayerId } from "@/lib/player";
 import { getSupabase } from "@/lib/supabase";
 
@@ -25,6 +27,9 @@ function normalizeRoom(raw: Room): Room {
     board: raw.board as Board,
     current_turn: Number(raw.current_turn) as Room["current_turn"],
     winner: Number(raw.winner) as Room["winner"],
+    last_winner: Number(raw.last_winner ?? 0) as Room["winner"],
+    host_ready: Boolean(raw.host_ready),
+    guest_ready: Boolean(raw.guest_ready),
   };
 }
 
@@ -37,6 +42,9 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "polling">(
+    "connecting",
+  );
 
   const inviteUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -69,13 +77,17 @@ export default function GameRoom({ roomId }: GameRoomProps) {
         currentRoom.host_id !== currentPlayerId &&
         !currentRoom.guest_id
       ) {
+        const colors = randomBlackPlayer(currentRoom.host_id, currentPlayerId);
         const supabase = getSupabase();
         const { error: joinError } = await supabase
           .from("rooms")
           .update({
             guest_id: currentPlayerId,
-            player_white: currentPlayerId,
-            status: "playing",
+            player_black: colors.player_black,
+            player_white: colors.player_white,
+            status: "ready",
+            host_ready: false,
+            guest_ready: false,
             updated_at: new Date().toISOString(),
           })
           .eq("id", roomId)
@@ -88,8 +100,6 @@ export default function GameRoom({ roomId }: GameRoomProps) {
     async function init() {
       try {
         const currentPlayerId = getPlayerId();
-        await loadRoom();
-
         const supabase = getSupabase();
         const { data } = await supabase
           .from("rooms")
@@ -97,24 +107,19 @@ export default function GameRoom({ roomId }: GameRoomProps) {
           .eq("id", roomId)
           .maybeSingle();
 
-        if (data) {
-          await ensureJoined(normalizeRoom(data as Room), currentPlayerId);
-          const { data: refreshed } = await supabase
-            .from("rooms")
-            .select("*")
-            .eq("id", roomId)
-            .maybeSingle();
-          if (refreshed) {
-            setRoom(normalizeRoom(refreshed as Room));
-          }
-        }
+        if (!data) throw new Error("방을 찾을 수 없습니다.");
+
+        await ensureJoined(normalizeRoom(data as Room), currentPlayerId);
+        await loadRoom();
 
         channel = supabase
-          .channel(`room-${roomId}`)
+          .channel(`room:${roomId}`, {
+            config: { broadcast: { self: false } },
+          })
           .on(
             "postgres_changes",
             {
-              event: "*",
+              event: "UPDATE",
               schema: "public",
               table: "rooms",
               filter: `id=eq.${roomId}`,
@@ -125,7 +130,17 @@ export default function GameRoom({ roomId }: GameRoomProps) {
               }
             },
           )
-          .subscribe();
+          .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              setLiveStatus("live");
+            } else if (
+              status === "CHANNEL_ERROR" ||
+              status === "TIMED_OUT" ||
+              status === "CLOSED"
+            ) {
+              setLiveStatus("polling");
+            }
+          });
       } catch (err) {
         setError(
           err instanceof Error
@@ -146,18 +161,35 @@ export default function GameRoom({ roomId }: GameRoomProps) {
     };
   }, [loadRoom, roomId]);
 
+  useEffect(() => {
+    if (!room || room.winner) return;
+
+    const intervalId = window.setInterval(() => {
+      void loadRoom();
+    }, 1500);
+
+    return () => window.clearInterval(intervalId);
+  }, [loadRoom, room?.winner, roomId]);
+
   const role = room ? getPlayerRole(room, playerId) : null;
   const isMyTurn = room ? canPlaceStone(room, playerId) : false;
+  const isHost = room?.host_id === playerId;
+  const isGuest = room?.guest_id === playerId;
+  const myReady = isHost ? room?.host_ready : room?.guest_ready;
+  const waitingForReady =
+    room?.status === "ready" && room.guest_id && !bothPlayersReady(room);
 
   const statusText = useMemo(() => {
     if (!room) return "불러오는 중...";
     if (room.winner === 1) return "흑돌 승리!";
     if (room.winner === 2) return "백돌 승리!";
     if (room.status === "waiting") return "상대를 기다리는 중...";
+    if (waitingForReady && !myReady) return "준비 버튼을 눌러주세요";
+    if (waitingForReady && myReady) return "상대 준비를 기다리는 중...";
     if (!role) return "관전 중";
     if (isMyTurn) return "내 차례입니다";
     return "상대 차례입니다";
-  }, [room, role, isMyTurn]);
+  }, [room, role, isMyTurn, waitingForReady, myReady]);
 
   async function handlePlace(row: number, col: number) {
     if (!room || !role || !isMyTurn || room.board[row][col] !== 0) return;
@@ -193,6 +225,45 @@ export default function GameRoom({ roomId }: GameRoomProps) {
     }
   }
 
+  async function markReady() {
+    if (!room || (!isHost && !isGuest)) return;
+
+    const supabase = getSupabase();
+    const readyPatch = isHost
+      ? { host_ready: true }
+      : { guest_ready: true };
+
+    const { error: updateError } = await supabase
+      .from("rooms")
+      .update({
+        ...readyPatch,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", roomId);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    const willBothReady =
+      (isHost && room.guest_ready) || (isGuest && room.host_ready);
+
+    if (willBothReady) {
+      const { error: startError } = await supabase
+        .from("rooms")
+        .update({
+          status: "playing",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", roomId);
+
+      if (startError) setError(startError.message);
+    }
+
+    await loadRoom();
+  }
+
   async function copyInvite() {
     if (!inviteUrl) return;
     await navigator.clipboard.writeText(inviteUrl);
@@ -201,7 +272,17 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   }
 
   async function resetRoom() {
-    if (!room || room.host_id !== playerId) return;
+    if (!room || room.host_id !== playerId || !room.guest_id) return;
+
+    const colors =
+      nextOnlineColors(
+        room.player_black,
+        room.player_white,
+        room.winner as 0 | 1 | 2,
+      ) ?? {
+        player_black: room.player_black!,
+        player_white: room.player_white!,
+      };
 
     const supabase = getSupabase();
     const { error: updateError } = await supabase
@@ -210,7 +291,12 @@ export default function GameRoom({ roomId }: GameRoomProps) {
         board: createEmptyBoard(),
         current_turn: 1,
         winner: 0,
-        status: room.guest_id ? "playing" : "waiting",
+        last_winner: room.winner,
+        player_black: colors.player_black,
+        player_white: colors.player_white,
+        status: "ready",
+        host_ready: false,
+        guest_ready: false,
         updated_at: new Date().toISOString(),
       })
       .eq("id", roomId);
@@ -221,6 +307,7 @@ export default function GameRoom({ roomId }: GameRoomProps) {
     }
 
     setLastMove(null);
+    await loadRoom();
   }
 
   if (loading) {
@@ -246,7 +333,7 @@ export default function GameRoom({ roomId }: GameRoomProps) {
     <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-4 py-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <Link href="/" className="text-sm text-zinc-500 underline">
-          로비
+          모드 선택
         </Link>
         <div className="rounded-full bg-white px-4 py-2 text-sm font-semibold shadow ring-1 ring-black/5">
           방 코드 <span className="tracking-[0.25em]">{roomId}</span>
@@ -258,8 +345,8 @@ export default function GameRoom({ roomId }: GameRoomProps) {
           <div>
             <p className="text-lg font-bold text-zinc-900">{statusText}</p>
             <p className="mt-1 text-sm text-zinc-600">
-              {role === "black" && "나: 흑돌"}
-              {role === "white" && "나: 백돌"}
+              {role === "black" && "나: 흑돌 (선공)"}
+              {role === "white" && "나: 백돌 (후공)"}
               {!role && "이 방의 플레이어가 아닙니다"}
             </p>
           </div>
@@ -271,31 +358,67 @@ export default function GameRoom({ roomId }: GameRoomProps) {
             >
               {copied ? "링크 복사됨" : "초대 링크 복사"}
             </button>
-            {room.host_id === playerId && (
+            {room.host_id === playerId && room.guest_id && (
               <button
                 type="button"
                 onClick={resetRoom}
                 className="rounded-xl border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-700 hover:bg-zinc-50"
               >
-                새 게임
+                다음 판
               </button>
             )}
           </div>
         </div>
 
+        {waitingForReady && (isHost || isGuest) && (
+          <div className="mt-5 rounded-2xl bg-amber-50 p-4">
+            <p className="text-sm text-amber-900">
+              첫 판은 흑/백이 랜덤으로 정해집니다. 다음 판부터는 이긴 사람이
+              백(후공)으로 둡니다.
+            </p>
+            {!myReady ? (
+              <button
+                type="button"
+                onClick={markReady}
+                className="mt-3 w-full rounded-2xl bg-zinc-900 px-4 py-3 font-semibold text-white"
+              >
+                준비 완료
+              </button>
+            ) : (
+              <p className="mt-3 text-sm font-medium text-amber-800">
+                내 준비 완료 · 상대 대기 중
+              </p>
+            )}
+            <p className="mt-2 text-xs text-amber-800">
+              호스트 {room.host_ready ? "준비됨" : "대기"} / 게스트{" "}
+              {room.guest_ready ? "준비됨" : "대기"}
+            </p>
+          </div>
+        )}
+
         <div className="mt-5">
           <OmokBoard
             board={room.board}
-            disabled={!isMyTurn || room.status !== "playing" || !!room.winner}
+            disabled={
+              !isMyTurn ||
+              room.status !== "playing" ||
+              !!room.winner ||
+              Boolean(waitingForReady)
+            }
             lastMove={lastMove}
             onPlace={handlePlace}
           />
         </div>
 
         <div className="mt-5 grid gap-2 rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-600">
-          <p>흑돌: {room.player_black ? "준비됨" : "대기"}</p>
-          <p>백돌: {room.player_white ? "준비됨" : "대기"}</p>
+          <p>흑돌: {room.player_black ? "배정됨" : "대기"}</p>
+          <p>백돌: {room.player_white ? "배정됨" : "대기"}</p>
           <p>같은 방 링크를 친구에게내면 바로 참가할 수 있습니다.</p>
+          <p className="text-xs text-zinc-500">
+            {liveStatus === "live" && "실시간 연결됨"}
+            {liveStatus === "polling" && "자동 동기화 중 (1.5초마다 갱신)"}
+            {liveStatus === "connecting" && "연결 중..."}
+          </p>
         </div>
 
         {error && (

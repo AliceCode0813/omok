@@ -2,7 +2,8 @@ export const BOARD_SIZE = 15;
 
 export type Player = 0 | 1 | 2;
 export type Board = Player[][];
-export type RoomStatus = "waiting" | "playing" | "finished";
+export type RoomStatus = "waiting" | "ready" | "playing" | "finished";
+export type RoomMode = "online" | "ai" | "local";
 
 export interface Room {
   id: string;
@@ -15,6 +16,10 @@ export interface Room {
   winner: Player;
   board: Board;
   updated_at: string;
+  mode?: RoomMode;
+  host_ready?: boolean;
+  guest_ready?: boolean;
+  last_winner?: Player;
 }
 
 export function createEmptyBoard(): Board {
@@ -80,4 +85,9 @@ export function canPlaceStone(room: Room, playerId: string): boolean {
   if (!role) return false;
   const expected: Player = role === "black" ? 1 : 2;
   return room.current_turn === expected;
+}
+
+export function bothPlayersReady(room: Room): boolean {
+  if (!room.guest_id) return false;
+  return Boolean(room.host_ready && room.guest_ready);
 }

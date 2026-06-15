@@ -39,10 +39,25 @@
    - `web/supabase/schema.sql`
 4. **Run** 클릭 → Success 나오면 OK
 
-### 2-4. Realtime 켜기
-1. 왼쪽 **Database** → **Replication**
-2. `rooms` 테이블 찾기
-3. **Realtime** 스위치 **ON**
+### 2-4. Realtime 켜기 (UI가 안 보이면 SQL로)
+
+**방법 A — SQL (추천, 가장 쉬움)**
+
+SQL Editor에서 아래 한 줄만 실행:
+
+```sql
+alter publication supabase_realtime add table public.rooms;
+```
+
+Success 나오면 완료입니다.
+
+**방법 B — 화면에서**
+
+1. 왼쪽 **Database** → **Publications** (또는 **Realtime**)
+2. `supabase_realtime` 항목 찾기
+3. `rooms` 테이블 체크/토글 ON
+
+> 예전 안내의 **Replication** 메뉴는 없거나 이름이 바뀌었을 수 있습니다.
 
 ### 2-5. API 키 복사
 1. 왼쪽 **Project Settings** (톱니바퀴)

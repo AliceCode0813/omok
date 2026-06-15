@@ -16,7 +16,13 @@ export function getSupabase() {
     );
   }
 
-  client = createClient(url, key);
+  client = createClient(url, key, {
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+  });
   return client;
 }
 

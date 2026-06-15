@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { createEmptyBoard, generateRoomCode } from "@/lib/game";
+import { randomBlackPlayer } from "@/lib/modes";
 import { getPlayerId } from "@/lib/player";
 import { getSupabase } from "@/lib/supabase";
 
@@ -14,7 +15,7 @@ export default function Lobby() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function createRoom() {
+  async function createOnlineRoom() {
     setLoading(true);
     setError("");
 
@@ -26,13 +27,17 @@ export default function Lobby() {
       const { error: insertError } = await supabase.from("rooms").insert({
         id: roomId,
         host_id: playerId,
-        player_black: playerId,
         guest_id: null,
+        player_black: null,
         player_white: null,
         current_turn: 1,
         status: "waiting",
         winner: 0,
+        last_winner: 0,
         board: createEmptyBoard(),
+        mode: "online",
+        host_ready: false,
+        guest_ready: false,
       });
 
       if (insertError) throw insertError;
@@ -48,7 +53,7 @@ export default function Lobby() {
     }
   }
 
-  async function joinRoom() {
+  async function joinOnlineRoom() {
     const code = joinCode.trim().toUpperCase();
     if (code.length !== 6) {
       setError("방 코드는 6자리입니다.");
@@ -85,12 +90,16 @@ export default function Lobby() {
       }
 
       if (!room.guest_id) {
+        const colors = randomBlackPlayer(room.host_id, playerId);
         const { error: updateError } = await supabase
           .from("rooms")
           .update({
             guest_id: playerId,
-            player_white: playerId,
-            status: "playing",
+            player_black: colors.player_black,
+            player_white: colors.player_white,
+            status: "ready",
+            host_ready: false,
+            guest_ready: false,
             updated_at: new Date().toISOString(),
           })
           .eq("id", code)
@@ -114,52 +123,60 @@ export default function Lobby() {
   return (
     <main className="mx-auto flex min-h-full w-full max-w-lg flex-1 flex-col justify-center px-5 py-10">
       <div className="rounded-3xl bg-white/90 p-8 shadow-2xl ring-1 ring-black/5 backdrop-blur">
-        <p className="text-sm font-medium text-amber-700">실시간 멀티플레이</p>
+        <p className="text-sm font-medium text-amber-700">오목 온라인</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-zinc-900">
-          오목 온라인
+          어떻게 둘까요?
         </h1>
         <p className="mt-3 text-sm leading-6 text-zinc-600">
-          방을 만들고 코드를 친구에게 보내세요. 서로 다른 폰에서도 같은 방에
-          들어와 실시간으로 대국할 수 있습니다.
+          AI 대전, 친구와 온라인 대결, 같은 기기 2인 대결 중에서 선택하세요.
         </p>
 
-        <div className="mt-8 space-y-4">
+        <div className="mt-8 space-y-3">
+          <Link
+            href="/play/ai"
+            className="block w-full rounded-2xl bg-zinc-900 px-4 py-4 text-center text-base font-semibold text-white transition hover:bg-zinc-800"
+          >
+            1. AI와 대결
+          </Link>
+
           <button
             type="button"
-            onClick={createRoom}
+            onClick={createOnlineRoom}
             disabled={loading}
-            className="w-full rounded-2xl bg-zinc-900 px-4 py-4 text-base font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-60"
+            className="w-full rounded-2xl bg-amber-500 px-4 py-4 text-base font-semibold text-white transition hover:bg-amber-400 disabled:opacity-60"
           >
-            {loading ? "처리 중..." : "새 방 만들기"}
+            {loading ? "처리 중..." : "2. 친구 초대 (온라인)"}
           </button>
 
-          <div className="rounded-2xl border border-zinc-200 p-4">
-            <label
-              htmlFor="room-code"
-              className="text-sm font-medium text-zinc-700"
+          <Link
+            href="/play/local"
+            className="block w-full rounded-2xl border border-zinc-300 px-4 py-4 text-center text-base font-semibold text-zinc-800 transition hover:bg-zinc-50"
+          >
+            3. 2인 같은 기기
+          </Link>
+        </div>
+
+        <div className="mt-6 rounded-2xl border border-zinc-200 p-4">
+          <label htmlFor="room-code" className="text-sm font-medium text-zinc-700">
+            친구 방 코드로 참가
+          </label>
+          <div className="mt-3 flex gap-2">
+            <input
+              id="room-code"
+              value={joinCode}
+              onChange={(event) => setJoinCode(event.target.value.toUpperCase())}
+              maxLength={6}
+              placeholder="예: ABC123"
+              className="flex-1 rounded-xl border border-zinc-300 px-4 py-3 text-lg tracking-[0.3em] uppercase outline-none ring-amber-500 focus:ring-2"
+            />
+            <button
+              type="button"
+              onClick={joinOnlineRoom}
+              disabled={loading}
+              className="rounded-xl bg-zinc-900 px-5 py-3 font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-60"
             >
-              방 코드로 참가
-            </label>
-            <div className="mt-3 flex gap-2">
-              <input
-                id="room-code"
-                value={joinCode}
-                onChange={(event) =>
-                  setJoinCode(event.target.value.toUpperCase())
-                }
-                maxLength={6}
-                placeholder="예: ABC123"
-                className="flex-1 rounded-xl border border-zinc-300 px-4 py-3 text-lg tracking-[0.3em] uppercase outline-none ring-amber-500 focus:ring-2"
-              />
-              <button
-                type="button"
-                onClick={joinRoom}
-                disabled={loading}
-                className="rounded-xl bg-amber-500 px-5 py-3 font-semibold text-white transition hover:bg-amber-400 disabled:opacity-60"
-              >
-                참가
-              </button>
-            </div>
+              참가
+            </button>
           </div>
         </div>
 
@@ -168,19 +185,7 @@ export default function Lobby() {
             {error}
           </p>
         )}
-
-        <p className="mt-6 text-center text-xs text-zinc-500">
-          배포 전 Supabase와 Vercel 환경 변수 설정이 필요합니다.
-        </p>
       </div>
-
-      <p className="mt-6 text-center text-sm text-zinc-500">
-        PC용 오목은{" "}
-        <Link href="https://github.com/AliceCode0813/omok" className="underline">
-          GitHub 저장소
-        </Link>
-        에서 확인할 수 있습니다.
-      </p>
     </main>
   );
 }
