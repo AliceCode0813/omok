@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+.env
+.env.local
+
+# Node / Next.js
+web/node_modules/
+web/.next/
+web/out/
+web/.env.local
