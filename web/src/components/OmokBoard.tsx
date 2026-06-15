@@ -34,21 +34,45 @@ export default function OmokBoard({
     [],
   );
 
+  const gridLines = useMemo(() => {
+    const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
+    for (let i = 0; i < BOARD_SIZE; i += 1) {
+      const p = (i / (BOARD_SIZE - 1)) * 100;
+      lines.push({ x1: 0, y1: p, x2: 100, y2: p });
+      lines.push({ x1: p, y1: 0, x2: p, y2: 100 });
+    }
+    return lines;
+  }, []);
+
   return (
     <div className="mx-auto w-full max-w-[min(92vw,520px)]">
-      <div
-        className="relative aspect-square rounded-2xl bg-[#d9b26d] p-[3.5%] shadow-xl ring-1 ring-black/10"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px)",
-          backgroundSize: `${100 / (BOARD_SIZE - 1)}% ${100 / (BOARD_SIZE - 1)}%`,
-        }}
-      >
-        <div className="absolute inset-[3.5%]">
+      <div className="relative aspect-square rounded-2xl bg-[#d4a24e] p-[4%] shadow-xl ring-2 ring-[#5c3d1e]/40">
+        <div className="absolute inset-[4%] overflow-hidden rounded-xl border-[3px] border-[#3f2a18] bg-[#dcb168]">
+          <svg
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            {gridLines.map((line, index) => (
+              <line
+                key={index}
+                x1={line.x1}
+                y1={line.y1}
+                x2={line.x2}
+                y2={line.y2}
+                stroke="#3f2a18"
+                strokeWidth={index < BOARD_SIZE ? 0.55 : 0.45}
+                vectorEffect="non-scaling-stroke"
+                strokeOpacity={0.9}
+              />
+            ))}
+          </svg>
+
           {STAR_POINTS.map(([row, col]) => (
             <span
               key={`${row}-${col}`}
-              className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/70"
+              className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#2b1a10]"
               style={{
                 left: `${(col / (BOARD_SIZE - 1)) * 100}%`,
                 top: `${(row / (BOARD_SIZE - 1)) * 100}%`,
@@ -78,11 +102,11 @@ export default function OmokBoard({
               >
                 {stone !== 0 && (
                   <span
-                    className={`absolute inset-[12%] rounded-full shadow-md ${
+                    className={`absolute inset-[10%] rounded-full shadow-md ${
                       stone === 1
-                        ? "bg-gradient-to-br from-zinc-700 to-black"
-                        : "bg-gradient-to-br from-white to-zinc-200 ring-1 ring-zinc-300"
-                    } ${isLast ? "ring-2 ring-amber-400" : ""}`}
+                        ? "bg-gradient-to-br from-zinc-800 to-black ring-1 ring-black/50"
+                        : "bg-gradient-to-br from-white to-zinc-200 ring-1 ring-zinc-400"
+                    } ${isLast ? "ring-2 ring-amber-500" : ""}`}
                   />
                 )}
               </button>

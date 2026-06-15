@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import OmokBoard from "@/components/OmokBoard";
-import { getAiMove } from "@/lib/ai";
+import { getAiMove, type AiDifficulty } from "@/lib/ai";
 import {
   checkWin,
   createEmptyBoard,
@@ -18,6 +18,7 @@ type Phase = "setup" | "ready" | "playing" | "finished";
 export default function AiGame() {
   const [phase, setPhase] = useState<Phase>("setup");
   const [colorChoice, setColorChoice] = useState<ColorChoice>("black");
+  const [difficulty, setDifficulty] = useState<AiDifficulty>("hard");
   const [board, setBoard] = useState<Board>(createEmptyBoard());
   const [currentTurn, setCurrentTurn] = useState<Player>(1);
   const [winner, setWinner] = useState<Player>(0);
@@ -78,7 +79,7 @@ export default function AiGame() {
 
     const timer = window.setTimeout(() => {
       setBoard((currentBoard) => {
-        const move = getAiMove(currentBoard, aiStone);
+        const move = getAiMove(currentBoard, aiStone, difficulty);
         if (currentBoard[move.row][move.col] !== 0) return currentBoard;
 
         const nextBoard = currentBoard.map((r) => [...r]) as Board;
@@ -94,10 +95,10 @@ export default function AiGame() {
         setCurrentTurn(humanStone);
         return nextBoard;
       });
-    }, 450);
+    }, difficulty === "hard" ? 700 : 450);
 
     return () => window.clearTimeout(timer);
-  }, [phase, winner, currentTurn, aiStone, humanStone]);
+  }, [phase, winner, currentTurn, aiStone, humanStone, difficulty]);
 
   return (
     <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-4 py-6">
@@ -114,38 +115,73 @@ export default function AiGame() {
         <p className="text-lg font-bold text-zinc-900">{statusText}</p>
         <p className="mt-1 text-sm text-zinc-600">
           나: {colorChoice === "black" ? "흑돌 (선공)" : "백돌 (후공)"}
+          {phase !== "setup" &&
+            ` · AI 난이도: ${difficulty === "hard" ? "어려움" : "보통"}`}
         </p>
 
         {phase === "setup" && (
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => setColorChoice("black")}
-              className={`rounded-2xl border px-4 py-4 text-left ${
-                colorChoice === "black"
-                  ? "border-zinc-900 bg-zinc-900 text-white"
-                  : "border-zinc-200 bg-white"
-              }`}
-            >
-              <p className="font-semibold">흑돌</p>
-              <p className="mt-1 text-sm opacity-80">먼저 둡니다</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => setColorChoice("white")}
-              className={`rounded-2xl border px-4 py-4 text-left ${
-                colorChoice === "white"
-                  ? "border-zinc-900 bg-zinc-900 text-white"
-                  : "border-zinc-200 bg-white"
-              }`}
-            >
-              <p className="font-semibold">백돌</p>
-              <p className="mt-1 text-sm opacity-80">AI 다음에 둡니다</p>
-            </button>
+          <div className="mt-5 space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setColorChoice("black")}
+                className={`rounded-2xl border px-4 py-4 text-left ${
+                  colorChoice === "black"
+                    ? "border-zinc-900 bg-zinc-900 text-white"
+                    : "border-zinc-200 bg-white"
+                }`}
+              >
+                <p className="font-semibold">흑돌</p>
+                <p className="mt-1 text-sm opacity-80">먼저 둡니다</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setColorChoice("white")}
+                className={`rounded-2xl border px-4 py-4 text-left ${
+                  colorChoice === "white"
+                    ? "border-zinc-900 bg-zinc-900 text-white"
+                    : "border-zinc-200 bg-white"
+                }`}
+              >
+                <p className="font-semibold">백돌</p>
+                <p className="mt-1 text-sm opacity-80">AI 다음에 둡니다</p>
+              </button>
+            </div>
+
+            <div>
+              <p className="mb-2 text-sm font-medium text-zinc-700">AI 난이도</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setDifficulty("normal")}
+                  className={`rounded-2xl border px-4 py-3 text-left ${
+                    difficulty === "normal"
+                      ? "border-amber-500 bg-amber-50"
+                      : "border-zinc-200 bg-white"
+                  }`}
+                >
+                  <p className="font-semibold">보통</p>
+                  <p className="mt-1 text-xs text-zinc-600">공격·수비 균형</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDifficulty("hard")}
+                  className={`rounded-2xl border px-4 py-3 text-left ${
+                    difficulty === "hard"
+                      ? "border-amber-500 bg-amber-50"
+                      : "border-zinc-200 bg-white"
+                  }`}
+                >
+                  <p className="font-semibold">어려움</p>
+                  <p className="mt-1 text-xs text-zinc-600">2수 앞 읽기 (추천)</p>
+                </button>
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={() => setPhase("ready")}
-              className="sm:col-span-2 rounded-2xl bg-amber-500 px-4 py-4 font-semibold text-white hover:bg-amber-400"
+              className="w-full rounded-2xl bg-amber-500 px-4 py-4 font-semibold text-white hover:bg-amber-400"
             >
               다음
             </button>
