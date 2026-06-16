@@ -20,6 +20,10 @@ export interface Room {
   host_ready?: boolean;
   guest_ready?: boolean;
   last_winner?: Player;
+  turn_started_at?: string | null;
+  last_move_row?: number | null;
+  last_move_col?: number | null;
+  end_reason?: "timeout" | "normal" | null;
 }
 
 export function createEmptyBoard(): Board {
@@ -90,4 +94,40 @@ export function canPlaceStone(room: Room, playerId: string): boolean {
 export function bothPlayersReady(room: Room): boolean {
   if (!room.guest_id) return false;
   return Boolean(room.host_ready && room.guest_ready);
+}
+
+export function getRoomLastMove(room: Room): { row: number; col: number } | null {
+  if (
+    room.last_move_row == null ||
+    room.last_move_col == null ||
+    room.last_move_row < 0 ||
+    room.last_move_col < 0
+  ) {
+    return null;
+  }
+  return { row: room.last_move_row, col: room.last_move_col };
+}
+
+export function getResultMessage(options: {
+  winner: Player;
+  endReason?: "timeout" | "normal" | null;
+  myStone?: Player;
+  blackLabel?: string;
+  whiteLabel?: string;
+}): string {
+  const { winner, endReason, myStone, blackLabel = "흑돌", whiteLabel = "백돌" } =
+    options;
+  if (!winner) return "";
+
+  const winnerLabel = winner === 1 ? blackLabel : whiteLabel;
+
+  if (endReason === "timeout") {
+    if (myStone && myStone !== winner) return "시간패";
+    if (myStone && myStone === winner) return "상대 시간패 · 승리!";
+    return `${winnerLabel} 승리 · 시간패`;
+  }
+
+  if (myStone && myStone === winner) return "승리!";
+  if (myStone && myStone !== winner) return "패배";
+  return `${winnerLabel} 승리!`;
 }

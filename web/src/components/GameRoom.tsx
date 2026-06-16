@@ -4,18 +4,22 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import OmokBoard from "@/components/OmokBoard";
+import TurnTimer from "@/components/TurnTimer";
 import {
   bothPlayersReady,
   canPlaceStone,
   checkWin,
   createEmptyBoard,
   getPlayerRole,
+  getResultMessage,
+  getRoomLastMove,
   type Board,
   type Room,
 } from "@/lib/game";
 import { nextOnlineColors, randomBlackPlayer } from "@/lib/modes";
 import { getPlayerId } from "@/lib/player";
 import { getSupabase } from "@/lib/supabase";
+import { useSyncedTurnTimer } from "@/hooks/useTurnTimer";
 
 interface GameRoomProps {
   roomId: string;
@@ -30,15 +34,18 @@ function normalizeRoom(raw: Room): Room {
     last_winner: Number(raw.last_winner ?? 0) as Room["winner"],
     host_ready: Boolean(raw.host_ready),
     guest_ready: Boolean(raw.guest_ready),
+    last_move_row:
+      raw.last_move_row == null ? null : Number(raw.last_move_row),
+    last_move_col:
+      raw.last_move_col == null ? null : Number(raw.last_move_col),
+    turn_started_at: raw.turn_started_at ?? null,
+    end_reason: raw.end_reason ?? null,
   };
 }
 
 export default function GameRoom({ roomId }: GameRoomProps) {
   const [room, setRoom] = useState<Room | null>(null);
   const [playerId, setPlayerId] = useState("");
-  const [lastMove, setLastMove] = useState<{ row: number; col: number } | null>(
-    null,
-  );
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -178,18 +185,63 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   const myReady = isHost ? room?.host_ready : room?.guest_ready;
   const waitingForReady =
     room?.status === "ready" && room.guest_id && !bothPlayersReady(room);
+  const myStone: Room["current_turn"] | undefined =
+    role === "black" ? 1 : role === "white" ? 2 : undefined;
+  const timerActive =
+    Boolean(room?.status === "playing" && !room?.winner && !waitingForReady);
+
+  const handleTimeout = useCallback(async () => {
+    if (!room || room.status !== "playing" || room.winner) return;
+
+    const elapsed = room.turn_started_at
+      ? Date.now() - new Date(room.turn_started_at).getTime()
+      : 0;
+    if (elapsed < 60_000) return;
+
+    const winnerStone = room.current_turn === 1 ? 2 : 1;
+    const supabase = getSupabase();
+    await supabase
+      .from("rooms")
+      .update({
+        winner: winnerStone,
+        status: "finished",
+        end_reason: "timeout",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", roomId)
+      .eq("current_turn", room.current_turn)
+      .eq("winner", 0);
+
+    await loadRoom();
+  }, [loadRoom, room, roomId]);
+
+  const remaining = useSyncedTurnTimer(
+    timerActive,
+    room?.turn_started_at,
+    `${room?.current_turn}-${room?.turn_started_at ?? "none"}`,
+    () => {
+      void handleTimeout();
+    },
+  );
+
+  const lastMove = room ? getRoomLastMove(room) : null;
 
   const statusText = useMemo(() => {
     if (!room) return "불러오는 중...";
-    if (room.winner === 1) return "흑돌 승리!";
-    if (room.winner === 2) return "백돌 승리!";
+    if (room.winner) {
+      return getResultMessage({
+        winner: room.winner,
+        endReason: room.end_reason ?? null,
+        myStone,
+      });
+    }
     if (room.status === "waiting") return "상대를 기다리는 중...";
     if (waitingForReady && !myReady) return "준비 버튼을 눌러주세요";
     if (waitingForReady && myReady) return "상대 준비를 기다리는 중...";
     if (!role) return "관전 중";
     if (isMyTurn) return "내 차례입니다";
     return "상대 차례입니다";
-  }, [room, role, isMyTurn, waitingForReady, myReady]);
+  }, [room, role, isMyTurn, waitingForReady, myReady, myStone]);
 
   async function handlePlace(row: number, col: number) {
     if (!room || !role || !isMyTurn || room.board[row][col] !== 0) return;
@@ -203,6 +255,7 @@ export default function GameRoom({ roomId }: GameRoomProps) {
 
     try {
       const supabase = getSupabase();
+      const now = new Date().toISOString();
       const { error: updateError } = await supabase
         .from("rooms")
         .update({
@@ -210,13 +263,16 @@ export default function GameRoom({ roomId }: GameRoomProps) {
           current_turn: winner ? stone : nextTurn,
           winner,
           status: winner ? "finished" : "playing",
-          updated_at: new Date().toISOString(),
+          last_move_row: row,
+          last_move_col: col,
+          turn_started_at: winner ? room.turn_started_at : now,
+          end_reason: winner ? "normal" : null,
+          updated_at: now,
         })
         .eq("id", roomId)
         .eq("current_turn", room.current_turn);
 
       if (updateError) throw updateError;
-      setLastMove({ row, col });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "착수에 실패했습니다.",
@@ -250,11 +306,16 @@ export default function GameRoom({ roomId }: GameRoomProps) {
       (isHost && room.guest_ready) || (isGuest && room.host_ready);
 
     if (willBothReady) {
+      const now = new Date().toISOString();
       const { error: startError } = await supabase
         .from("rooms")
         .update({
           status: "playing",
-          updated_at: new Date().toISOString(),
+          turn_started_at: now,
+          last_move_row: null,
+          last_move_col: null,
+          end_reason: null,
+          updated_at: now,
         })
         .eq("id", roomId);
 
@@ -297,6 +358,10 @@ export default function GameRoom({ roomId }: GameRoomProps) {
         status: "ready",
         host_ready: false,
         guest_ready: false,
+        last_move_row: null,
+        last_move_col: null,
+        turn_started_at: null,
+        end_reason: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", roomId);
@@ -306,7 +371,6 @@ export default function GameRoom({ roomId }: GameRoomProps) {
       return;
     }
 
-    setLastMove(null);
     await loadRoom();
   }
 
@@ -330,7 +394,7 @@ export default function GameRoom({ roomId }: GameRoomProps) {
   }
 
   return (
-    <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-4 py-6">
+    <main className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <Link href="/" className="text-sm text-zinc-500 underline">
           모드 선택
@@ -397,6 +461,12 @@ export default function GameRoom({ roomId }: GameRoomProps) {
         )}
 
         <div className="mt-5">
+          {timerActive && (
+            <TurnTimer
+              remaining={remaining}
+              label={isMyTurn ? "내 턴 남은 시간" : "상대 턴 남은 시간"}
+            />
+          )}
           <OmokBoard
             board={room.board}
             disabled={

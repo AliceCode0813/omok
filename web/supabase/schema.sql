@@ -14,6 +14,10 @@ create table if not exists public.rooms (
   mode text not null default 'online',
   host_ready boolean not null default false,
   guest_ready boolean not null default false,
+  turn_started_at timestamptz,
+  last_move_row smallint,
+  last_move_col smallint,
+  end_reason text,
   updated_at timestamptz not null default now()
 );
 

@@ -1,38 +1,63 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import OmokBoard from "@/components/OmokBoard";
+import TurnTimer from "@/components/TurnTimer";
 import {
   checkWin,
   createEmptyBoard,
+  getResultMessage,
   type Board,
   type Player,
 } from "@/lib/game";
+import { useLocalTurnTimer } from "@/hooks/useTurnTimer";
 
 type Phase = "ready" | "playing" | "finished";
+type EndReason = "timeout" | "normal" | null;
 
 export default function LocalGame() {
   const [phase, setPhase] = useState<Phase>("ready");
   const [board, setBoard] = useState<Board>(createEmptyBoard());
   const [currentTurn, setCurrentTurn] = useState<Player>(1);
   const [winner, setWinner] = useState<Player>(0);
+  const [endReason, setEndReason] = useState<EndReason>(null);
   const [lastMove, setLastMove] = useState<{ row: number; col: number } | null>(
     null,
   );
 
+  const handleTimeout = useCallback(() => {
+    if (phase !== "playing" || winner) return;
+    setWinner(currentTurn === 1 ? 2 : 1);
+    setEndReason("timeout");
+    setPhase("finished");
+  }, [phase, winner, currentTurn]);
+
+  const remaining = useLocalTurnTimer(
+    phase === "playing" && !winner,
+    `${currentTurn}-${lastMove?.row ?? "x"}-${lastMove?.col ?? "y"}`,
+    handleTimeout,
+  );
+
   const statusText = useMemo(() => {
     if (phase === "ready") return "두 명이 번갈아 둡니다. 준비되면 시작하세요";
-    if (winner === 1) return "흑돌 승리!";
-    if (winner === 2) return "백돌 승리!";
-    return currentTurn === 1 ? "흑돌 차례" : "백돌 차례";
-  }, [phase, winner, currentTurn]);
+    if (winner) {
+      return getResultMessage({
+        winner,
+        endReason,
+        blackLabel: "흑돌",
+        whiteLabel: "백돌",
+      });
+    }
+    return currentTurn === 1 ? "흑돌 차례 · 1분" : "백돌 차례 · 1분";
+  }, [phase, winner, endReason, currentTurn]);
 
   function startGame() {
     setBoard(createEmptyBoard());
     setCurrentTurn(1);
     setWinner(0);
+    setEndReason(null);
     setLastMove(null);
     setPhase("playing");
   }
@@ -47,6 +72,7 @@ export default function LocalGame() {
 
     if (checkWin(nextBoard, row, col)) {
       setWinner(currentTurn);
+      setEndReason("normal");
       setPhase("finished");
       return;
     }
@@ -55,7 +81,7 @@ export default function LocalGame() {
   }
 
   return (
-    <main className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-4 py-6">
+    <main className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-4 py-6">
       <div className="mb-4 flex items-center justify-between">
         <Link href="/" className="text-sm text-zinc-500 underline">
           모드 선택
@@ -80,14 +106,20 @@ export default function LocalGame() {
 
         {(phase === "playing" || phase === "finished") && (
           <>
-            <div className="mt-5">
-              <OmokBoard
-                board={board}
-                disabled={!!winner}
-                lastMove={lastMove}
-                onPlace={handlePlace}
-              />
-            </div>
+            {phase === "playing" && (
+              <div className="mt-5">
+                <TurnTimer
+                  remaining={remaining}
+                  label={currentTurn === 1 ? "흑돌 남은 시간" : "백돌 남은 시간"}
+                />
+              </div>
+            )}
+            <OmokBoard
+              board={board}
+              disabled={!!winner}
+              lastMove={lastMove}
+              onPlace={handlePlace}
+            />
             <button
               type="button"
               onClick={startGame}

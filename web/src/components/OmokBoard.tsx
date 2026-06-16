@@ -44,10 +44,24 @@ export default function OmokBoard({
     return lines;
   }, []);
 
+  const lastMovePosition = useMemo(() => {
+    if (!lastMove) return null;
+    return {
+      left: `${(lastMove.col / (BOARD_SIZE - 1)) * 100}%`,
+      top: `${(lastMove.row / (BOARD_SIZE - 1)) * 100}%`,
+    };
+  }, [lastMove]);
+
   return (
-    <div className="mx-auto w-full max-w-[min(92vw,520px)]">
-      <div className="relative aspect-square rounded-2xl bg-[#d4a24e] p-[4%] shadow-xl ring-2 ring-[#5c3d1e]/40">
-        <div className="absolute inset-[4%] overflow-hidden rounded-xl border-[3px] border-[#3f2a18] bg-[#dcb168]">
+    <div className="mx-auto w-full max-w-[min(98vw,760px)]">
+      {lastMovePosition && (
+        <p className="mb-2 text-center text-sm font-semibold text-red-600">
+          마지막 수: {lastMove!.row + 1}행 {lastMove!.col + 1}열
+        </p>
+      )}
+
+      <div className="relative aspect-square rounded-2xl bg-[#d4a24e] p-[3.5%] shadow-xl ring-2 ring-[#5c3d1e]/40">
+        <div className="absolute inset-[3.5%] overflow-visible rounded-xl border-[3px] border-[#3f2a18] bg-[#dcb168]">
           <svg
             className="pointer-events-none absolute inset-0 h-full w-full"
             viewBox="0 0 100 100"
@@ -62,9 +76,9 @@ export default function OmokBoard({
                 x2={line.x2}
                 y2={line.y2}
                 stroke="#3f2a18"
-                strokeWidth={index < BOARD_SIZE ? 0.55 : 0.45}
+                strokeWidth={0.65}
                 vectorEffect="non-scaling-stroke"
-                strokeOpacity={0.9}
+                strokeOpacity={0.95}
               />
             ))}
           </svg>
@@ -72,13 +86,29 @@ export default function OmokBoard({
           {STAR_POINTS.map(([row, col]) => (
             <span
               key={`${row}-${col}`}
-              className="pointer-events-none absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#2b1a10]"
+              className="pointer-events-none absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#2b1a10]"
               style={{
                 left: `${(col / (BOARD_SIZE - 1)) * 100}%`,
                 top: `${(row / (BOARD_SIZE - 1)) * 100}%`,
               }}
             />
           ))}
+
+          {lastMovePosition && (
+            <div
+              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2"
+              style={{
+                left: lastMovePosition.left,
+                top: lastMovePosition.top,
+                width: `${100 / BOARD_SIZE}%`,
+                height: `${100 / BOARD_SIZE}%`,
+              }}
+            >
+              <span className="absolute inset-[-28%] rounded-full border-4 border-red-500 bg-red-500/15 shadow-[0_0_0_6px_rgba(239,68,68,0.18)] animate-pulse" />
+              <span className="absolute left-1/2 top-1/2 h-[130%] w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500" />
+              <span className="absolute left-1/2 top-1/2 h-1.5 w-[130%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500" />
+            </div>
+          )}
 
           {cells.map(({ row, col }) => {
             const stone = board[row][col] as Player;
@@ -91,7 +121,7 @@ export default function OmokBoard({
                 type="button"
                 disabled={disabled || stone !== 0}
                 onClick={() => onPlace(row, col)}
-                className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full transition disabled:cursor-default"
+                className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full transition disabled:cursor-default"
                 style={{
                   left: `${(col / (BOARD_SIZE - 1)) * 100}%`,
                   top: `${(row / (BOARD_SIZE - 1)) * 100}%`,
@@ -102,11 +132,11 @@ export default function OmokBoard({
               >
                 {stone !== 0 && (
                   <span
-                    className={`absolute inset-[10%] rounded-full shadow-md ${
+                    className={`absolute inset-[8%] rounded-full shadow-md ${
                       stone === 1
                         ? "bg-gradient-to-br from-zinc-800 to-black ring-1 ring-black/50"
                         : "bg-gradient-to-br from-white to-zinc-200 ring-1 ring-zinc-400"
-                    } ${isLast ? "ring-2 ring-amber-500" : ""}`}
+                    } ${isLast ? "ring-4 ring-red-500" : ""}`}
                   />
                 )}
               </button>
