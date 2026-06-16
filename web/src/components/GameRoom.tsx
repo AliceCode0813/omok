@@ -461,12 +461,21 @@ export default function GameRoom({ roomId }: GameRoomProps) {
         )}
 
         <div className="mt-5">
-          {timerActive && (
-            <TurnTimer
-              remaining={remaining}
-              label={isMyTurn ? "내 턴 남은 시간" : "상대 턴 남은 시간"}
-            />
-          )}
+          <TurnTimer
+            remaining={remaining}
+            active={timerActive}
+            label={
+              room.winner
+                ? "게임 종료"
+                : room.status === "waiting"
+                  ? "상대 대기"
+                  : waitingForReady
+                    ? "준비 중"
+                    : isMyTurn
+                      ? "내 턴 남은 시간"
+                      : "상대 턴 남은 시간"
+            }
+          />
           <OmokBoard
             board={room.board}
             disabled={

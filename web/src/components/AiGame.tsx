@@ -232,12 +232,18 @@ export default function AiGame() {
 
         {(phase === "playing" || phase === "finished") && (
           <>
-            {phase === "playing" && isHumanTurn && (
-              <div className="mt-5">
-                <TurnTimer remaining={remaining} label="내 턴 남은 시간" />
-              </div>
-            )}
-            <div className={phase === "playing" && isHumanTurn ? "" : "mt-5"}>
+            <div className="mt-5">
+              <TurnTimer
+                remaining={remaining}
+                active={phase === "playing" && isHumanTurn}
+                label={
+                  phase === "finished"
+                    ? "게임 종료"
+                    : isHumanTurn
+                      ? "내 턴 남은 시간"
+                      : "AI 차례"
+                }
+              />
               <OmokBoard
                 board={board}
                 disabled={!isHumanTurn || !!winner}

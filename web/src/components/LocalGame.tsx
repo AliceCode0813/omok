@@ -106,20 +106,25 @@ export default function LocalGame() {
 
         {(phase === "playing" || phase === "finished") && (
           <>
-            {phase === "playing" && (
-              <div className="mt-5">
-                <TurnTimer
-                  remaining={remaining}
-                  label={currentTurn === 1 ? "흑돌 남은 시간" : "백돌 남은 시간"}
-                />
-              </div>
-            )}
-            <OmokBoard
-              board={board}
-              disabled={!!winner}
-              lastMove={lastMove}
-              onPlace={handlePlace}
-            />
+            <div className="mt-5">
+              <TurnTimer
+                remaining={remaining}
+                active={phase === "playing" && !winner}
+                label={
+                  phase === "finished"
+                    ? "게임 종료"
+                    : currentTurn === 1
+                      ? "흑돌 남은 시간"
+                      : "백돌 남은 시간"
+                }
+              />
+              <OmokBoard
+                board={board}
+                disabled={!!winner}
+                lastMove={lastMove}
+                onPlace={handlePlace}
+              />
+            </div>
             <button
               type="button"
               onClick={startGame}
