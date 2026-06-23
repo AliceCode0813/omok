@@ -12,6 +12,7 @@ import {
   type Board,
   type Player,
 } from "@/lib/game";
+import { getForbiddenReason } from "@/lib/renju";
 import { useLocalTurnTimer } from "@/hooks/useTurnTimer";
 
 type Phase = "ready" | "playing" | "finished";
@@ -26,6 +27,7 @@ export default function LocalGame() {
   const [lastMove, setLastMove] = useState<{ row: number; col: number } | null>(
     null,
   );
+  const [error, setError] = useState("");
 
   const handleTimeout = useCallback(() => {
     if (phase !== "playing" || winner) return;
@@ -50,7 +52,9 @@ export default function LocalGame() {
         whiteLabel: "백돌",
       });
     }
-    return currentTurn === 1 ? "흑돌 차례 · 1분" : "백돌 차례 · 1분";
+    return currentTurn === 1
+      ? "흑돌 차례 · 1분 · 삼삼 금지"
+      : "백돌 차례 · 1분";
   }, [phase, winner, endReason, currentTurn]);
 
   function startGame() {
@@ -64,6 +68,13 @@ export default function LocalGame() {
 
   function handlePlace(row: number, col: number) {
     if (phase !== "playing" || winner || board[row][col] !== 0) return;
+
+    const forbidden = getForbiddenReason(board, row, col, currentTurn);
+    if (forbidden) {
+      setError(forbidden);
+      return;
+    }
+    setError("");
 
     const nextBoard = board.map((r) => [...r]) as Board;
     nextBoard[row][col] = currentTurn;
@@ -125,6 +136,11 @@ export default function LocalGame() {
                 onPlace={handlePlace}
               />
             </div>
+            {error && (
+              <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </p>
+            )}
             <button
               type="button"
               onClick={startGame}

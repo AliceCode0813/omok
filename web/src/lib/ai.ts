@@ -5,6 +5,7 @@ import {
   type Board,
   type Player,
 } from "@/lib/game";
+import { isDoubleThreeForbidden } from "@/lib/renju";
 
 export type AiDifficulty = "normal" | "hard";
 type Stone = 1 | 2;
@@ -136,13 +137,25 @@ function getCandidateMoves(board: Board): { row: number; col: number }[] {
   return moves.length ? moves : [{ row: CENTER, col: CENTER }];
 }
 
+function filterLegalMoves(
+  board: Board,
+  moves: { row: number; col: number }[],
+  stone: Stone,
+): { row: number; col: number }[] {
+  if (stone !== 1) return moves;
+  const legal = moves.filter(
+    (m) => !isDoubleThreeForbidden(board, m.row, m.col, 1),
+  );
+  return legal.length ? legal : moves;
+}
+
 function bestScoredMove(
   board: Board,
   stone: Stone,
 ): { row: number; col: number } | null {
   let best: { row: number; col: number; score: number } | null = null;
 
-  for (const { row, col } of getCandidateMoves(board)) {
+  for (const { row, col } of filterLegalMoves(board, getCandidateMoves(board), stone)) {
     const attack = evaluatePoint(board, row, col, stone);
     const defense = evaluatePoint(board, row, col, (3 - stone) as Stone);
     const score = attack * 1.05 + defense;
@@ -191,7 +204,7 @@ function minimax(
   if (depth === 0) return evaluateBoard(board, aiStone);
 
   const currentStone = maximizing ? aiStone : ((3 - aiStone) as Stone);
-  const candidates = getCandidateMoves(board)
+  const candidates = filterLegalMoves(board, getCandidateMoves(board), currentStone)
     .map((move) => ({
       ...move,
       score: evaluatePoint(board, move.row, move.col, currentStone),
@@ -237,10 +250,12 @@ function getHardMove(board: Board, aiStone: Stone): { row: number; col: number }
   const block = findWinningMove(board, (3 - aiStone) as Stone);
   if (block) return block;
 
-  let bestMove = getCandidateMoves(board)[0] ?? { row: CENTER, col: CENTER };
+  let bestMove =
+    filterLegalMoves(board, getCandidateMoves(board), aiStone)[0] ??
+    { row: CENTER, col: CENTER };
   let bestScore = -Infinity;
 
-  const candidates = getCandidateMoves(board)
+  const candidates = filterLegalMoves(board, getCandidateMoves(board), aiStone)
     .map((move) => ({
       ...move,
       score:

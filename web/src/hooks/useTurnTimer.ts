@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { TURN_SECONDS } from "@/lib/timer";
 
@@ -11,6 +11,8 @@ export function useLocalTurnTimer(
   seconds = TURN_SECONDS,
 ): number {
   const [remaining, setRemaining] = useState(seconds);
+  const onTimeoutRef = useRef(onTimeout);
+  onTimeoutRef.current = onTimeout;
 
   useEffect(() => {
     if (!active) {
@@ -27,12 +29,12 @@ export function useLocalTurnTimer(
       setRemaining(left);
       if (left <= 0) {
         window.clearInterval(intervalId);
-        onTimeout();
+        onTimeoutRef.current();
       }
     }, 200);
 
     return () => window.clearInterval(intervalId);
-  }, [active, turnKey, onTimeout, seconds]);
+  }, [active, turnKey, seconds]);
 
   return remaining;
 }
@@ -45,27 +47,45 @@ export function useSyncedTurnTimer(
   seconds = TURN_SECONDS,
 ): number {
   const [remaining, setRemaining] = useState(seconds);
-  const [tick, setTick] = useState(0);
+  const [localStart, setLocalStart] = useState<number | null>(null);
+  const onTimeoutRef = useRef(onTimeout);
+  const firedRef = useRef(false);
+  onTimeoutRef.current = onTimeout;
 
   useEffect(() => {
-    if (!active) return;
-    const intervalId = window.setInterval(() => setTick((value) => value + 1), 250);
-    return () => window.clearInterval(intervalId);
-  }, [active]);
-
-  useEffect(() => {
-    if (!active || !turnStartedAt) {
+    firedRef.current = false;
+    if (!active) {
+      setLocalStart(null);
       setRemaining(seconds);
       return;
     }
+    if (turnStartedAt) {
+      setLocalStart(null);
+    } else {
+      setLocalStart(Date.now());
+    }
+  }, [active, turnKey, turnStartedAt, seconds]);
 
-    const elapsed = Math.floor(
-      (Date.now() - new Date(turnStartedAt).getTime()) / 1000,
-    );
-    const left = Math.max(0, seconds - elapsed);
-    setRemaining(left);
-    if (left <= 0) onTimeout();
-  }, [active, turnStartedAt, turnKey, tick, onTimeout, seconds]);
+  useEffect(() => {
+    if (!active) return;
+
+    const intervalId = window.setInterval(() => {
+      const startMs = turnStartedAt
+        ? new Date(turnStartedAt).getTime()
+        : (localStart ?? Date.now());
+
+      const elapsed = Math.floor((Date.now() - startMs) / 1000);
+      const left = Math.max(0, seconds - elapsed);
+      setRemaining(left);
+
+      if (left <= 0 && !firedRef.current) {
+        firedRef.current = true;
+        onTimeoutRef.current();
+      }
+    }, 200);
+
+    return () => window.clearInterval(intervalId);
+  }, [active, turnStartedAt, localStart, turnKey, seconds]);
 
   return remaining;
 }

@@ -13,6 +13,7 @@ import {
   type Board,
   type Player,
 } from "@/lib/game";
+import { getForbiddenReason } from "@/lib/renju";
 import type { ColorChoice } from "@/lib/modes";
 import { useLocalTurnTimer } from "@/hooks/useTurnTimer";
 
@@ -30,6 +31,7 @@ export default function AiGame() {
   const [lastMove, setLastMove] = useState<{ row: number; col: number } | null>(
     null,
   );
+  const [error, setError] = useState("");
 
   const humanStone: Player = colorChoice === "black" ? 1 : 2;
   const aiStone: Player = colorChoice === "black" ? 2 : 1;
@@ -43,7 +45,7 @@ export default function AiGame() {
   }, [phase, winner, isHumanTurn, aiStone]);
 
   const remaining = useLocalTurnTimer(
-    phase === "playing" && isHumanTurn,
+    phase === "playing" && !winner && isHumanTurn,
     `${currentTurn}-${lastMove?.row ?? "x"}-${lastMove?.col ?? "y"}`,
     handleTimeout,
   );
@@ -97,6 +99,12 @@ export default function AiGame() {
 
   function handleHumanPlace(row: number, col: number) {
     if (phase !== "playing" || !isHumanTurn || board[row][col] !== 0) return;
+    const forbidden = getForbiddenReason(board, row, col, humanStone);
+    if (forbidden) {
+      setError(forbidden);
+      return;
+    }
+    setError("");
     const nextBoard = board.map((r) => [...r]) as Board;
     nextBoard[row][col] = humanStone;
     applyMove(nextBoard, row, col, humanStone);
@@ -146,7 +154,7 @@ export default function AiGame() {
           나: {colorChoice === "black" ? "흑돌 (선공)" : "백돌 (후공)"}
           {phase !== "setup" &&
             ` · AI 난이도: ${difficulty === "hard" ? "어려움" : "보통"}`}
-          {phase === "playing" && !winner && " · 턴당 1분"}
+          {phase === "playing" && !winner && " · 턴당 1분 · 흑 삼삼 금지"}
         </p>
 
         {phase === "setup" && (
@@ -235,7 +243,7 @@ export default function AiGame() {
             <div className="mt-5">
               <TurnTimer
                 remaining={remaining}
-                active={phase === "playing" && isHumanTurn}
+                active={phase === "playing" && !winner && isHumanTurn}
                 label={
                   phase === "finished"
                     ? "게임 종료"
@@ -251,6 +259,11 @@ export default function AiGame() {
                 onPlace={handleHumanPlace}
               />
             </div>
+            {error && (
+              <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </p>
+            )}
             <div className="mt-4 flex gap-2">
               <button
                 type="button"
