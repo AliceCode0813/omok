@@ -256,21 +256,36 @@ export default function GameRoom({ roomId }: GameRoomProps) {
     try {
       const supabase = getSupabase();
       const now = new Date().toISOString();
-      const { error: updateError } = await supabase
+      const fullUpdate = {
+        board: nextBoard,
+        current_turn: winner ? stone : nextTurn,
+        winner,
+        status: winner ? "finished" : "playing",
+        last_move_row: row,
+        last_move_col: col,
+        turn_started_at: winner ? room.turn_started_at : now,
+        end_reason: winner ? "normal" : null,
+        updated_at: now,
+      };
+
+      let { error: updateError } = await supabase
         .from("rooms")
-        .update({
-          board: nextBoard,
-          current_turn: winner ? stone : nextTurn,
-          winner,
-          status: winner ? "finished" : "playing",
-          last_move_row: row,
-          last_move_col: col,
-          turn_started_at: winner ? room.turn_started_at : now,
-          end_reason: winner ? "normal" : null,
-          updated_at: now,
-        })
+        .update(fullUpdate)
         .eq("id", roomId)
         .eq("current_turn", room.current_turn);
+
+      if (
+        updateError &&
+        /column|schema|last_move|turn_started|end_reason/i.test(updateError.message)
+      ) {
+        const { last_move_row, last_move_col, turn_started_at, end_reason, ...basic } =
+          fullUpdate;
+        ({ error: updateError } = await supabase
+          .from("rooms")
+          .update(basic)
+          .eq("id", roomId)
+          .eq("current_turn", room.current_turn));
+      }
 
       if (updateError) throw updateError;
     } catch (err) {
@@ -307,7 +322,7 @@ export default function GameRoom({ roomId }: GameRoomProps) {
 
     if (willBothReady) {
       const now = new Date().toISOString();
-      const { error: startError } = await supabase
+      let { error: startError } = await supabase
         .from("rooms")
         .update({
           status: "playing",
@@ -318,6 +333,19 @@ export default function GameRoom({ roomId }: GameRoomProps) {
           updated_at: now,
         })
         .eq("id", roomId);
+
+      if (
+        startError &&
+        /column|schema|last_move|turn_started|end_reason/i.test(startError.message)
+      ) {
+        ({ error: startError } = await supabase
+          .from("rooms")
+          .update({
+            status: "playing",
+            updated_at: now,
+          })
+          .eq("id", roomId));
+      }
 
       if (startError) setError(startError.message);
     }
@@ -487,6 +515,16 @@ export default function GameRoom({ roomId }: GameRoomProps) {
             lastMove={lastMove}
             onPlace={handlePlace}
           />
+          {!room.winner && room.status === "playing" && !isMyTurn && !waitingForReady && (
+            <p className="mt-2 text-center text-sm text-zinc-500">
+              지금은 상대 차례입니다
+            </p>
+          )}
+          {waitingForReady && (
+            <p className="mt-2 text-center text-sm text-amber-700">
+              두 사람 모두 준비 완료를 눌러야 시작됩니다
+            </p>
+          )}
         </div>
 
         <div className="mt-5 grid gap-2 rounded-2xl bg-zinc-50 p-4 text-sm text-zinc-600">

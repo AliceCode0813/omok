@@ -19,8 +19,11 @@ const STAR_POINTS = [
   [7, 7],
 ] as const;
 
-function preventFocusScroll(event: React.MouseEvent<HTMLButtonElement>) {
-  event.preventDefault();
+function preventFocusScroll(event: React.PointerEvent<HTMLButtonElement>) {
+  // 모바일 터치는 막지 않고, 마우스 포커스 스크롤만 방지
+  if (event.pointerType === "mouse") {
+    event.preventDefault();
+  }
 }
 
 export default function OmokBoard({
@@ -108,7 +111,7 @@ export default function OmokBoard({
                 type="button"
                 tabIndex={-1}
                 disabled={disabled || stone !== 0}
-                onMouseDown={preventFocusScroll}
+                onPointerDown={preventFocusScroll}
                 onClick={() => onPlace(row, col)}
                 className="absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded-full outline-none transition disabled:cursor-default"
                 style={{
